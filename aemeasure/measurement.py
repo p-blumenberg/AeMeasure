@@ -4,11 +4,16 @@ import os
 import socket
 import sys
 import typing
+import contextvars
+import inspect
 
 from .database import Database
 from .utils.capture import OutputCopy
 from .utils.env import get_environment
 from .utils.git import get_git_revision
+
+
+series_var = contextvars.ContextVar("measurement_series", default=None)
 
 
 class Measurement(dict):
@@ -127,3 +132,27 @@ class Measurement(dict):
 
     def write(self):
         self._db.dump([self], self._cache)
+
+
+def save(func):
+    def wrapped(*args, **kwargs):
+        # get current measurement series
+        series = series_var.get()
+        if series is None:
+            # TODO: unsure how we should handle this case.
+            raise RuntimeError(
+                "Decorated function must be called within a MeasurementSeries context."
+            )
+
+        # get parameters of func with their respective values
+        sig = inspect.signature(func)
+        func_args = sig.bind(*args, **kwargs).arguments
+        # TODO: handle naming collisions with the default parameters captured by Measurement.
+        # Perform the measurement
+        with series.measurement() as m:
+            m.update(func_args)
+            result = func(*args, **kwargs)
+            m["result"] = result    # This could be a problem if result is not JSON-serializable
+        return result
+    return wrapped
+

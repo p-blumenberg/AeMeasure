@@ -3,6 +3,7 @@ import pathlib
 import typing
 
 from aemeasure import Measurement
+from .measurement import series_var
 from aemeasure.database import Database
 
 
@@ -31,6 +32,7 @@ class MeasurementSeries:
         self._stderr = stderr
         self._stdout = stdout
         self._save_metadata = metadata
+        self.ctx_token = None
 
     def measurement(self, cache: typing.Optional[bool] = None) -> Measurement:
         """
@@ -54,6 +56,7 @@ class MeasurementSeries:
                            cache=cache)
 
     def __enter__(self):
+        self.ctx_token = series_var.set(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -62,4 +65,5 @@ class MeasurementSeries:
             logging.getLogger("AeMeasure").error(
                 "An exception occurred during the series.")
         self.db.flush()
+        series_var.reset(self.ctx_token)
         return False  # Do not suppress exceptions
